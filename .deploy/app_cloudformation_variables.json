@@ -1,0 +1,6 @@
+[
+    {
+        "ParameterKey": "VPCName",
+        "ParameterValue": "#{VPCName}"
+    },
+]
