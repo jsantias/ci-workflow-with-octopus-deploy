@@ -21,14 +21,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    - uses: actions/cache@v2
-      id: cache
-      with:
-        path: /usr/bin/dotnet
-        key: ${{ runner.os }}-dotnet
-
     - name: Install GitVersion
-      if: steps.cache.outputs.cache-hit != 'true'
       uses: gittools/actions/gitversion/setup@v0.9.7
       with:
         versionSpec: '5.8.1'
