@@ -4,7 +4,6 @@ name: CI Workflow
 on: 
   push:
     branches:
-      - 'main'
       - 'release/**'
   release:
     types: 
@@ -20,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.generated-version.outputs.VERSION }}
+      branchName: ${{ steps.gitversion.outputs.branchName }}
     steps:
     - name: Checkout the repository
       uses: actions/checkout@v2
@@ -39,6 +39,18 @@ jobs:
       id: generated-version
       run: |
         echo "::set-output name=VERSION::${{ steps.gitversion.outputs.semVer }}.$GITHUB_RUN_NUMBER-${{ steps.gitversion.outputs.shortSha }}"
+    
+    - name: Validate the GitVersion
+      id: validate-version
+      shell: pwsh
+      run: |
+        if ("${{ steps.gitversion.outputs.branchName }}" -like 'release/*') {
+          echo "::set-output name=VERSION::${{ steps.generated-version.outputs.VERSION }}"
+        }
+        else {
+          $version = "${{ steps.generated-version.outputs.VERSION }}" -replace '-beta', ''
+          echo "::set-output name=VERSION::$version" 
+        }
 
   "build_docker_image":
     runs-on: ubuntu-latest
@@ -46,9 +58,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v2
-
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v1
+      with:
+          fetch-depth: 0
     
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
@@ -73,6 +84,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v2
+      with:
+          fetch-depth: 0
 
     - name: Install Octopus CLI 🐙 ➡ 💻
       uses: OctopusDeploy/install-octopus-cli-action@v1.1.1
@@ -88,14 +101,25 @@ jobs:
         packages: '.artifacts/nuget/${{ github.event.repository.name }}.${{ needs.generate_version.outputs.version }}.zip'
         server: ${{ secrets.OCTO_SERVER }}
     
+    - name: Octopus Deploy Build Information
+      uses: xo-energy/action-octopus-build-information@v1.3.14
+      with:
+        octopus_api_key: ${{ secrets.OCTO_API_KEY }}
+        octopus_server: ${{ secrets.OCTO_SERVER }}
+        octopus_project: ${{ github.event.repository.name }}
+        output_path: ./
+        push_package_ids: "${{ github.event.repository.name }}"
+        push_version: ${{ needs.generate_version.outputs.version }}
+    
     - name: Set Octopus Channel
       id: octopus-channel
       run: |
-        if [[ ${{ github.ref }} == 'refs/heads/main' ]]; then 
-          echo "::set-output name=OCTO_CHANNEL::Release" 
-        else
-          echo "::set-output name=OCTO_CHANNEL::Unstable"
-        fi
+        if ("${{ needs.generate_version.outputs.branchName }}" -like 'release/*') {
+            echo "::set-output name=OCTO_CHANNEL::Unstable" 
+        }
+        else {
+          echo "::set-output name=OCTO_CHANNEL::Release"
+        }
 
     - name: Create a release in Octopus Deploy 🚀 ➡ 🐙
       uses: OctopusDeploy/create-release-action@v1.1.1
